@@ -1,0 +1,36 @@
+import time
+import logging
+
+from callbacks import on_candle
+from websocket import BinanceSpotFeed
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s "
+        "[%(levelname)s] "
+        "[%(name)s] : "
+        "%(message)s"
+    ),
+)
+
+
+feed = BinanceSpotFeed(
+    symbol="BTCUSDT",
+    interval="1m",
+    on_candle=on_candle,
+)
+
+feed.start()
+
+
+try:
+
+    while True:
+        time.sleep(1)
+
+except KeyboardInterrupt:
+
+    print("\nStopping...")
+    feed.stop()
