@@ -141,7 +141,7 @@ class WebSocketClient:
             self._thread.join(timeout=5)
 
         logger.info(
-            "WebSocket stopped."
+            f"WebSocket stopped."
         )
 
 
@@ -175,23 +175,30 @@ class CandleBuilder:
     @staticmethod
     def _interval_to_seconds(interval: str) -> int:
 
-        mapping = {
-            "1s": 1,
-            "1m": 60,
-            "3m": 180,
-            "5m": 300,
-            "15m": 900,
-            "30m": 1800,
-            "1h": 3600,
-        }
+        if interval.endswith("m"):
+            try:
+                minutes = int(interval[:-1])
+                return minutes * 60
+            except ValueError:
+                pass
 
-        try:
-            return mapping[interval]
+        if interval.endswith("s"):
+            try:
+                seconds = int(interval[:-1])
+                return seconds
+            except ValueError:
+                pass
 
-        except KeyError:
-            raise ValueError(
-                f"Unsupported candle interval: {interval}"
-            )
+        if interval.endswith("h"):
+            try:
+                hours = int(interval[:-1])
+                return hours * 3600
+            except ValueError:
+                pass
+
+        raise ValueError(
+            f"Unsupported candle interval: {interval}"
+        )
 
     def add_trade(
         self,

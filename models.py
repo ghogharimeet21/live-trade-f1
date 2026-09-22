@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+from enums import CandleColour
 from utils import seconds_to_hms
 
 
@@ -14,6 +15,19 @@ class Quote:
     close: float
     volume: float
     is_closed: bool
+
+    @property
+    def candle_colour(self) -> CandleColour | None:
+        if not self.is_closed:
+            return
+
+        if self.close > self.open:
+            return CandleColour.GREEN
+
+        if self.close < self.open:
+            return CandleColour.RED
+
+        return CandleColour.NEUTRAL
 
     def __str__(self):
         return f"symbol={self.symbol}, date={self.date}, time={seconds_to_hms(self.time)}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume}"

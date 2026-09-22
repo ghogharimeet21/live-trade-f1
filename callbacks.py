@@ -11,7 +11,6 @@ strategy = Strategy([12, 50], 14)
 
 
 def on_candle(quote: Quote):
-    logger.info(quote)
+    logger.info(quote)  #if quote.is_closed else None
 
-    strategy.on_candle(quote, quote.is_closed)
-    ...
+    strategy.on_candle(quote)

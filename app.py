@@ -18,11 +18,19 @@ logging.basicConfig(
 
 feed = BinanceSpotFeed(
     symbol="BTCUSDT",
-    interval="1m",
+    interval="2m",
     on_candle=on_candle,
 )
 
 feed.start()
+
+# feed2 = BinanceSpotFeed(
+#     symbol="ETHUSDT",
+#     interval="4m",
+#     on_candle=on_candle
+# )
+
+# feed2.start()
 
 
 try:
@@ -34,3 +42,4 @@ except KeyboardInterrupt:
 
     print("\nStopping...")
     feed.stop()
+    # feed2.stop()

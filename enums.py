@@ -45,3 +45,15 @@ class KlineInterval(Enum):
             "1M": 2592000,
         }
         return mapping.get(self.value, 60)
+
+
+
+class CandleColour(Enum):
+    GREEN = "GREEN"
+    RED = "RED"
+    NEUTRAL = "NEUTRAL"
+
+
+class Direction(Enum):
+    UP = "UP"
+    DOWN = "DOWN"
