@@ -1,5 +1,7 @@
 import logging
+import os
 import queue
+import signal
 import time
 
 from websocket import BinanceSpotFeed
@@ -38,15 +40,23 @@ metrics_queue: queue.Queue = queue.Queue(maxsize=5_000)
 
 
 # ── Strategy ─────────────────────────────────────────────────────────────── #
+SYMBOL = os.getenv("SYMBOL", "BTCUSDT").upper()
+INTERVAL = os.getenv("INTERVAL", "2m")
+TRADE_QTY = float(os.getenv("TRADE_QTY", "0.001"))
+SLIPPAGE_BPS = float(os.getenv("SLIPPAGE_BPS", "1.0"))
+MONITOR_HOST = os.getenv("MONITOR_HOST", "127.0.0.1")
+MONITOR_PORT = int(os.getenv("MONITOR_PORT", "8765"))
+
+
 strategy = Strategy(
     sma_periods=[12, 50],
     rsi_period=14,
-    trade_qty=0.001,
+    trade_qty=TRADE_QTY,
 )
 
 
 # ── Position Manager ──────────────────────────────────────────────────────── #
-position_manager = PositionManager(symbol="BTCUSDT")
+position_manager = PositionManager(symbol=SYMBOL)
 
 
 # ── Startup: historical warmup + chart seed (NOT on live hot path) ──────── #
@@ -55,8 +65,8 @@ historical_feed = BinanceHistoricalFeed()
 
 try:
     warmup_quotes = historical_feed.get_recent_quotes(
-        symbol="BTCUSDT",
-        interval="2m",
+        symbol=SYMBOL,
+        interval=INTERVAL,
         limit=max(150, strategy.warmup_target + 25),
     )
     if len(warmup_quotes) < strategy.warmup_target:
@@ -89,8 +99,8 @@ except Exception:
 monitor = MonitorServer(
     metrics_queue=metrics_queue,
     metrics_store=metrics_store,
-    host="127.0.0.1",
-    port=8765,
+    host=MONITOR_HOST,
+    port=MONITOR_PORT,
 )
 
 
@@ -107,15 +117,15 @@ engine = StrategyEngine(
 executor = OrderExecutor(
     order_queue=order_queue,
     position_manager=position_manager,
-    slippage_bps=1.0,
+    slippage_bps=SLIPPAGE_BPS,
     metrics_queue=metrics_queue,
 )
 
 
 # ── Thread 1: Market Data ────────────────────────────────────────────────── #
 feed = BinanceSpotFeed(
-    symbol="BTCUSDT",
-    interval="2m",
+    symbol=SYMBOL,
+    interval=INTERVAL,
     candle_queue=candle_queue,
 )
 
@@ -128,18 +138,32 @@ feed.start()
 
 logger.info("=================================================================")
 logger.info("🚀 F1 Live Paper Trading Service is Running")
-logger.info("📡 Real-time Monitoring Dashboard: http://127.0.0.1:8765")
-logger.info("📊 Symbol: BTCUSDT | Timeframe: 2m | Strategy: SMA(12,50) + RSI(14)")
+logger.info("📡 Real-time Monitoring Dashboard: http://localhost:%d", MONITOR_PORT)
+logger.info("📊 Symbol: %s | Timeframe: %s | Strategy: SMA(12,50) + RSI(14)", SYMBOL, INTERVAL)
 logger.info("⚡ Strategy evaluates LIVE candle updates (intrabar)")
 logger.info("🧵 Threads: MarketDataWS → StrategyEngine → OrderExecutor → Monitor")
 logger.info("⏹️  Press Ctrl+C to stop cleanly")
 logger.info("=================================================================")
 
+shutdown_requested = False
+
+
+def _request_shutdown(signum, _frame):
+    global shutdown_requested
+    if shutdown_requested:
+        return
+    shutdown_requested = True
+    logger.info("Received %s — shutting down trading pipeline...", signal.Signals(signum).name)
+
+
+signal.signal(signal.SIGINT, _request_shutdown)
+signal.signal(signal.SIGTERM, _request_shutdown)
+
 try:
-    while True:
+    while not shutdown_requested:
         time.sleep(1)
 
-except KeyboardInterrupt:
+finally:
     logger.info("\nShutting down trading pipeline...")
 
     # Stop market data first so no new work is produced.

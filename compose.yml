@@ -1,0 +1,33 @@
+services:
+  f1-live-trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Container must listen on all interfaces so the host browser can
+      # reach the dashboard through the published port.
+      MONITOR_HOST: 0.0.0.0
+      MONITOR_PORT: 8765
+
+      # Easy configuration without editing Python.
+      SYMBOL: BTCUSDT
+      INTERVAL: 2m
+      TRADE_QTY: 0.001
+      SLIPPAGE_BPS: 1.0
+    ports:
+      - "127.0.0.1:${MONITOR_PORT:-8765}:8765"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8765/', timeout=3).read(1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
