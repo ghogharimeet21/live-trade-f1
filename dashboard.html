@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
       --bg:        #080a0f;
@@ -404,6 +405,99 @@
 
     .val-up   { color: var(--accent-g); font-weight: 600; }
     .val-down { color: var(--accent-r); font-weight: 600; }
+
+    /* ── TradingView-style market chart ── */
+    .market-chart-card {
+      min-height: 640px;
+    }
+    .market-chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .market-chart-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0;
+    }
+    .chart-mode {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(16,185,129,0.10);
+      border: 1px solid rgba(16,185,129,0.25);
+      color: var(--accent-g);
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+    }
+    .chart-mode-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-g);
+      box-shadow: 0 0 6px var(--accent-g);
+    }
+    .chart-tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .chart-tool {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 5px;
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 600;
+    }
+    .chart-tool.active {
+      color: var(--text);
+      border-color: var(--border-lit);
+      background: var(--surface3);
+    }
+    .chart-legend {
+      min-height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 0 2px 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+    .legend-item { display: inline-flex; gap: 5px; align-items: center; }
+    .legend-key { color: var(--text); font-weight: 600; }
+    .chart-wrap {
+      height: 570px;
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #080a0f;
+    }
+    .chart-footnote {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+    }
+    .chart-footnote a { color: var(--muted); text-decoration: none; }
+    .chart-footnote a:hover { color: var(--text); }
   </style>
 </head>
 <body>
@@ -441,6 +535,38 @@
       <div class="stat-pill"><span class="label">PROCESSED TICKS</span><span class="val" id="tick-count">0</span></div>
       <div class="stat-pill"><span class="label">SIGNALS FIRED</span><span class="val" id="sig-count">0</span></div>
       <div class="stat-pill"><span class="label">EXECUTED TRADES</span><span class="val" id="trade-count">0</span></div>
+    </div>
+  </div>
+
+
+  <!-- TradingView-style execution chart -->
+  <div class="card market-chart-card">
+    <div class="card-header market-chart-header">
+      <div class="market-chart-title">
+        <span>Live Execution Chart</span>
+        <span class="chart-mode"><span class="chart-mode-dot"></span>LIVE CANDLES</span>
+      </div>
+      <div class="chart-tools">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">BTCUSDT · 2m</span>
+        <button class="chart-tool active" id="chart-follow" type="button">FOLLOW LIVE</button>
+        <button class="chart-tool" id="chart-fit" type="button">FIT</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:10px 12px 12px">
+      <div class="chart-legend" id="market-chart-legend">
+        <span class="legend-item"><span class="legend-key">O</span> —</span>
+        <span class="legend-item"><span class="legend-key">H</span> —</span>
+        <span class="legend-item"><span class="legend-key">L</span> —</span>
+        <span class="legend-item"><span class="legend-key">C</span> —</span>
+        <span class="legend-item"><span class="legend-key">SMA12</span> —</span>
+        <span class="legend-item"><span class="legend-key">SMA50</span> —</span>
+        <span class="legend-item"><span class="legend-key">RSI</span> —</span>
+      </div>
+      <div id="market-chart" class="chart-wrap"></div>
+      <div class="chart-footnote">
+        <span>▲ signal &nbsp; ● fill &nbsp; — position entry</span>
+        <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView Lightweight Charts™</a>
+      </div>
     </div>
   </div>
 
@@ -612,7 +738,7 @@
       </div>
       <div class="card-body" style="padding:0">
         <div class="log-list" id="signal-log">
-          <div class="empty-state">Waiting for strategy signals on closed candles...</div>
+          <div class="empty-state">Waiting for strategy signals...</div>
         </div>
       </div>
     </div>
@@ -657,7 +783,289 @@ let miniChart    = null;
 let latChart     = null;
 let posEntry = 0, posQty = 0, posSide = "FLAT";
 
-// ── Charts ────────────────────────────────────────────────────────────── //
+// TradingView-style chart state — all UI-only.
+let marketChart = null;
+let candleSeries = null;
+let sma12Series = null;
+let sma50Series = null;
+let rsiSeries = null;
+let rsi30Series = null;
+let rsi50Series = null;
+let rsi70Series = null;
+let marketMarkersApi = null;
+let marketMarkers = [];
+let chartFollowLive = true;
+let pendingChartTick = null;
+let chartFramePending = false;
+let positionPriceLine = null;
+
+function chartCandle(d) {
+  return {
+    time: Number(d.time),
+    open: Number(d.open),
+    high: Number(d.high),
+    low: Number(d.low),
+    close: Number(d.close),
+  };
+}
+
+function linePoint(d, key) {
+  const value = d[key];
+  return value === null || value === undefined || !Number.isFinite(Number(value))
+    ? null
+    : { time: Number(d.time), value: Number(value) };
+}
+
+function updateChartLegend(c) {
+  const el = document.getElementById("market-chart-legend");
+  if (!el || !c) return;
+  const n = v => v === null || v === undefined || !Number.isFinite(Number(v)) ? "—" : fmt(v, 2);
+  el.innerHTML = `
+    <span class="legend-item"><span class="legend-key">O</span> ${n(c.open)}</span>
+    <span class="legend-item"><span class="legend-key">H</span> ${n(c.high)}</span>
+    <span class="legend-item"><span class="legend-key">L</span> ${n(c.low)}</span>
+    <span class="legend-item"><span class="legend-key">C</span> ${n(c.close)}</span>
+    <span class="legend-item" style="color:#3b82f6"><span class="legend-key">SMA12</span> ${n(c.fast_sma)}</span>
+    <span class="legend-item" style="color:#f59e0b"><span class="legend-key">SMA50</span> ${n(c.slow_sma)}</span>
+    <span class="legend-item" style="color:#a78bfa"><span class="legend-key">RSI</span> ${n(c.rsi)}</span>`;
+}
+
+function initMarketChart() {
+  if (!window.LightweightCharts) {
+    console.error("Lightweight Charts failed to load.");
+    return;
+  }
+
+  const LWC = window.LightweightCharts;
+  marketChart = LWC.createChart(document.getElementById("market-chart"), {
+    autoSize: true,
+    layout: {
+      background: { type: "solid", color: "#080a0f" },
+      textColor: "#64748b",
+      fontFamily: "JetBrains Mono, monospace",
+      fontSize: 10,
+    },
+    grid: {
+      vertLines: { color: "#151c2b" },
+      horzLines: { color: "#151c2b" },
+    },
+    crosshair: {
+      mode: LWC.CrosshairMode.Normal,
+      vertLine: { color: "#475569", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#1e2840" },
+      horzLine: { color: "#475569", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#1e2840" },
+    },
+    timeScale: {
+      timeVisible: true,
+      secondsVisible: false,
+      borderColor: "#1c253b",
+      rightOffset: 6,
+      barSpacing: 9,
+    },
+    rightPriceScale: {
+      borderColor: "#1c253b",
+      scaleMargins: { top: 0.06, bottom: 0.10 },
+    },
+    localization: {
+      timeFormatter: ts => new Date(Number(ts) * 1000).toLocaleString("en-IN", { hour12: false }),
+    },
+  });
+
+  candleSeries = marketChart.addSeries(LWC.CandlestickSeries, {
+    upColor: "#10b981",
+    downColor: "#ef4444",
+    borderVisible: false,
+    wickUpColor: "#10b981",
+    wickDownColor: "#ef4444",
+    priceLineVisible: true,
+    lastValueVisible: true,
+  });
+
+  sma12Series = marketChart.addSeries(LWC.LineSeries, {
+    color: "#3b82f6",
+    lineWidth: 2,
+    title: "SMA12",
+    priceLineVisible: false,
+    lastValueVisible: true,
+  });
+
+  sma50Series = marketChart.addSeries(LWC.LineSeries, {
+    color: "#f59e0b",
+    lineWidth: 2,
+    title: "SMA50",
+    priceLineVisible: false,
+    lastValueVisible: true,
+  });
+
+  // RSI in its own pane so it cannot distort the price scale.
+  rsiSeries = marketChart.addSeries(LWC.LineSeries, {
+    color: "#a78bfa",
+    lineWidth: 2,
+    title: "RSI14",
+    priceLineVisible: false,
+    lastValueVisible: true,
+    priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+  }, 1);
+  rsi30Series = marketChart.addSeries(LWC.LineSeries, {
+    color: "rgba(239,68,68,0.35)", lineWidth: 1, lineStyle: LWC.LineStyle.Dashed,
+    priceLineVisible: false, lastValueVisible: false,
+  }, 1);
+  rsi50Series = marketChart.addSeries(LWC.LineSeries, {
+    color: "rgba(100,116,139,0.35)", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted,
+    priceLineVisible: false, lastValueVisible: false,
+  }, 1);
+  rsi70Series = marketChart.addSeries(LWC.LineSeries, {
+    color: "rgba(16,185,129,0.35)", lineWidth: 1, lineStyle: LWC.LineStyle.Dashed,
+    priceLineVisible: false, lastValueVisible: false,
+  }, 1);
+
+  if (LWC.createSeriesMarkers) {
+    marketMarkersApi = LWC.createSeriesMarkers(candleSeries, []);
+  }
+
+  marketChart.subscribeCrosshairMove(param => {
+    if (!param || !param.time || !param.seriesData) return;
+    const c = param.seriesData.get(candleSeries);
+    const f = param.seriesData.get(sma12Series);
+    const s = param.seriesData.get(sma50Series);
+    const r = param.seriesData.get(rsiSeries);
+    if (!c) return;
+    updateChartLegend({
+      open: c.open, high: c.high, low: c.low, close: c.close,
+      fast_sma: f ? f.value : null, slow_sma: s ? s.value : null, rsi: r ? r.value : null,
+    });
+  });
+
+  const followButton = document.getElementById("chart-follow");
+  const fitButton = document.getElementById("chart-fit");
+  followButton.addEventListener("click", () => {
+    chartFollowLive = !chartFollowLive;
+    followButton.classList.toggle("active", chartFollowLive);
+    followButton.textContent = chartFollowLive ? "FOLLOW LIVE" : "FOLLOW OFF";
+    if (chartFollowLive && marketChart) marketChart.timeScale().scrollToRealTime();
+  });
+  fitButton.addEventListener("click", () => {
+    if (marketChart) marketChart.timeScale().fitContent();
+  });
+}
+
+function applyMarketChartSnapshot(candles, signals = [], fills = [], position = null) {
+  if (!marketChart || !candleSeries) return;
+  const list = (candles || []).filter(c => Number.isFinite(Number(c.time)));
+  candleSeries.setData(list.map(chartCandle));
+  sma12Series.setData(list.map(c => linePoint(c, "fast_sma")).filter(Boolean));
+  sma50Series.setData(list.map(c => linePoint(c, "slow_sma")).filter(Boolean));
+  rsiSeries.setData(list.map(c => linePoint(c, "rsi")).filter(Boolean));
+  rsi30Series.setData(list.map(c => ({ time: Number(c.time), value: 30 })));
+  rsi50Series.setData(list.map(c => ({ time: Number(c.time), value: 50 })));
+  rsi70Series.setData(list.map(c => ({ time: Number(c.time), value: 70 })));
+
+  marketMarkers = [];
+  (fills || []).slice().reverse().forEach(addFillMarker);
+  (signals || []).slice().reverse().forEach(addSignalMarker);
+  syncMarketMarkers();
+
+  if (list.length) {
+    updateChartLegend(list[list.length - 1]);
+    if (chartFollowLive) marketChart.timeScale().scrollToRealTime();
+  }
+  if (position) updateChartPosition(position.side, position.entry_price, position.quantity);
+}
+
+function syncMarketMarkers() {
+  if (!marketMarkersApi) return;
+  marketMarkers.sort((a, b) => Number(a.time) - Number(b.time) || String(a.id).localeCompare(String(b.id)));
+  marketMarkersApi.setMarkers(marketMarkers.slice(-150));
+}
+
+function addSignalMarker(d) {
+  const start = d.candle_start_ms;
+  if (!start) return;
+  const id = `signal-${d.order_id}`;
+  if (marketMarkers.some(m => m.id === id)) return;
+  marketMarkers.push({
+    id,
+    time: Math.floor(Number(start) / 1000),
+    position: d.side === "BUY" ? "belowBar" : "aboveBar",
+    color: d.side === "BUY" ? "#10b981" : "#ef4444",
+    shape: d.side === "BUY" ? "arrowUp" : "arrowDown",
+    text: `${d.side}`,
+    size: 1,
+  });
+  syncMarketMarkers();
+}
+
+function addFillMarker(d) {
+  const start = d.candle_start_ms;
+  if (!start) return;
+  const id = `fill-${d.order_id}`;
+  if (marketMarkers.some(m => m.id === id)) return;
+  marketMarkers.push({
+    id,
+    time: Math.floor(Number(start) / 1000),
+    position: "inBar",
+    color: d.side === "BUY" ? "#34d399" : "#fb7185",
+    shape: "circle",
+    text: `F ${fmt(d.fill_price, 0)}`,
+    size: 1,
+  });
+  syncMarketMarkers();
+}
+
+function updateChartPosition(side, entry, quantity) {
+  if (!candleSeries) return;
+  if (positionPriceLine) {
+    candleSeries.removePriceLine(positionPriceLine);
+    positionPriceLine = null;
+  }
+  if (side && side !== "FLAT" && Number(entry) > 0) {
+    positionPriceLine = candleSeries.createPriceLine({
+      price: Number(entry),
+      color: side === "LONG" ? "#10b981" : "#ef4444",
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: `${side} ${fmt(quantity || 0, 5)}`,
+    });
+  }
+}
+
+function queueMarketChartTick(d) {
+  if (!marketChart || !candleSeries || d.candle_start_ms === undefined) return;
+  pendingChartTick = d;
+  if (chartFramePending) return;
+  chartFramePending = true;
+  requestAnimationFrame(() => {
+    chartFramePending = false;
+    const t = pendingChartTick;
+    pendingChartTick = null;
+    if (!t) return;
+
+    const candle = {
+      time: Math.floor(Number(t.candle_start_ms) / 1000),
+      open: Number(t.open),
+      high: Number(t.high),
+      low: Number(t.low),
+      close: Number(t.price),
+    };
+    candleSeries.update(candle);
+    const fast = linePoint({ time: candle.time, fast_sma: t.fast_sma }, "fast_sma");
+    const slow = linePoint({ time: candle.time, slow_sma: t.slow_sma }, "slow_sma");
+    const rsi = linePoint({ time: candle.time, rsi: t.rsi }, "rsi");
+    if (fast) sma12Series.update(fast);
+    if (slow) sma50Series.update(slow);
+    if (rsi) rsiSeries.update(rsi);
+    rsi30Series.update({ time: candle.time, value: 30 });
+    rsi50Series.update({ time: candle.time, value: 50 });
+    rsi70Series.update({ time: candle.time, value: 70 });
+    updateChartLegend({
+      open: candle.open, high: candle.high, low: candle.low, close: candle.close,
+      fast_sma: t.fast_sma, slow_sma: t.slow_sma, rsi: t.rsi,
+    });
+    if (chartFollowLive) marketChart.timeScale().scrollToRealTime();
+  });
+}
+
+// ── Existing lightweight dashboard charts ─────────────────────────────── //
 function initMiniChart() {
   const ctx = document.getElementById("mini-chart").getContext("2d");
   miniChart = new Chart(ctx, {
@@ -913,6 +1321,11 @@ function applySnapshot(d) {
 
   updateMiniChart(d.price_history || []);
   updateLatChart(d.latency_history || []);
+  applyMarketChartSnapshot(d.chart_candles || [], d.signals || [], d.fills || [], {
+    side: d.position_side || "FLAT",
+    entry_price: d.position_entry || 0,
+    quantity: d.position_qty || 0,
+  });
 
   setGaugeClass(document.getElementById("gauge-eval"), d.avg_eval_ms);
   setGaugeClass(document.getElementById("gauge-lat"),  d.avg_latency_ms);
@@ -1075,6 +1488,10 @@ function connect() {
       if (latHistory.length > 80) latHistory.shift();
       updateLatChart(latHistory);
 
+      // TradingView-style chart is downstream UI work. It is frame-coalesced
+      // so high-frequency ticks never trigger a full chart redraw.
+      queueMarketChartTick(d);
+
       // Tick feed
       addTickRow({ ...d, ts: Date.now() / 1000 });
     }
@@ -1093,6 +1510,7 @@ function connect() {
       `;
       if (log.querySelector(".empty-state")) log.innerHTML = "";
       log.prepend(item);
+      addSignalMarker(d);
     }
 
     if (msg.type === "fill") {
@@ -1115,6 +1533,7 @@ function connect() {
       `;
       if (log.querySelector(".empty-state")) log.innerHTML = "";
       log.prepend(item);
+      addFillMarker(d);
     }
 
     if (msg.type === "position") {
@@ -1127,11 +1546,13 @@ function connect() {
       badge.className   = "pos-badge " + posSide;
       document.getElementById("pos-entry").textContent = posSide === "FLAT" ? "—" : fmt(posEntry, 2);
       document.getElementById("pos-qty").textContent   = posSide === "FLAT" ? "—" : fmt(posQty, 5);
+      updateChartPosition(posSide, posEntry, posQty);
       updateUpnl(lastPrice);
     }
   };
 }
 
+initMarketChart();
 initMiniChart();
 initLatChart();
 connect();

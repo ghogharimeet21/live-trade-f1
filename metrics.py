@@ -23,6 +23,7 @@ class TickEvent:
     symbol: str
     price: float
     is_closed: bool
+    candle_start_ms: int
     candle_queue_depth: int
     order_queue_depth: int
     strategy_eval_ms: float     # time strategy.on_candle() took
@@ -48,6 +49,7 @@ class SignalEvent:
     price: float
     reason: str
     order_id: str
+    candle_start_ms: int | None = None
     ts: float = field(default_factory=time.time)
 
 
@@ -64,6 +66,7 @@ class FillEvent:
     realized_pnl: float         # 0 if opening, non-zero if closing
     total_realized_pnl: float
     trade_count: int
+    candle_start_ms: int | None = None
     ts: float = field(default_factory=time.time)
 
 
@@ -86,6 +89,7 @@ class MetricsStore:
     """
 
     MAX_TICKS   = 200   # price history points
+    MAX_CANDLES = 500   # aggregated chart candles
     MAX_SIGNALS = 50    # signal log entries
     MAX_FILLS   = 50    # fill log entries
     MAX_LATENCY = 100   # latency history points
@@ -95,6 +99,11 @@ class MetricsStore:
 
         # Price history [{"ts": float, "price": float, "closed": bool, "open": float, "high": float, "low": float, "volume": float}]
         self.price_history: deque = deque(maxlen=self.MAX_TICKS)
+
+        # Aggregated OHLCV + indicator state for the TradingView-style chart.
+        # The monitor thread owns this state, so the trading threads never touch it.
+        self.chart_candles: deque = deque(maxlen=self.MAX_CANDLES)
+        self._chart_by_start: dict[int, dict] = {}
 
         # Latency history [{"ts": float, "eval_ms": float, "latency_ms": float}]
         self.latency_history: deque = deque(maxlen=self.MAX_LATENCY)
@@ -135,6 +144,49 @@ class MetricsStore:
         self._latency_ms_sum: float = 0.0
         self._latency_count: int = 0
 
+    def seed_historical(self, candles: list[dict], *, fast_sma=None, slow_sma=None, rsi=None, warmup_count=0, warmup_target=50, strategy_ready=False):
+        """Seed UI-only chart state before live threads start.
+
+        This is intentionally called during startup, before the live pipeline
+        begins. It never runs in the strategy or executor hot path.
+        """
+        with self._lock:
+            self.chart_candles.clear()
+            self._chart_by_start.clear()
+
+            for raw in candles[-self.MAX_CANDLES:]:
+                candle = {
+                    "time": int(raw["candle_start_ms"]) // 1000,
+                    "candle_start_ms": int(raw["candle_start_ms"]),
+                    "open": float(raw["open"]),
+                    "high": float(raw["high"]),
+                    "low": float(raw["low"]),
+                    "close": float(raw["close"]),
+                    "volume": float(raw.get("volume", 0.0)),
+                    "closed": True,
+                    "fast_sma": raw.get("fast_sma"),
+                    "slow_sma": raw.get("slow_sma"),
+                    "rsi": raw.get("rsi"),
+                }
+                self.chart_candles.append(candle)
+                self._chart_by_start[candle["candle_start_ms"]] = candle
+
+            if candles:
+                last = candles[-1]
+                self.symbol = str(last.get("symbol", self.symbol))
+                self.latest_price = float(last.get("close", 0.0))
+                self.latest_open = float(last.get("open", 0.0))
+                self.latest_high = float(last.get("high", 0.0))
+                self.latest_low = float(last.get("low", 0.0))
+                self.latest_volume = float(last.get("volume", 0.0))
+
+            self.fast_sma = fast_sma
+            self.slow_sma = slow_sma
+            self.rsi = rsi
+            self.warmup_count = warmup_count
+            self.warmup_target = warmup_target
+            self.strategy_ready = strategy_ready
+
     def apply_tick(self, e: TickEvent):
         with self._lock:
             self.symbol = e.symbol
@@ -162,6 +214,41 @@ class MetricsStore:
                 "volume": e.volume,
                 "closed": e.is_closed,
             })
+
+            # O(1) chart update: replace the current candle on every live tick,
+            # or append exactly one new candle when the candle timestamp changes.
+            candle = self._chart_by_start.get(e.candle_start_ms)
+            if candle is None:
+                if len(self.chart_candles) >= self.MAX_CANDLES:
+                    oldest = self.chart_candles.popleft()
+                    self._chart_by_start.pop(oldest["candle_start_ms"], None)
+
+                candle = {
+                    "time": e.candle_start_ms // 1000,
+                    "candle_start_ms": e.candle_start_ms,
+                    "open": e.open,
+                    "high": e.high,
+                    "low": e.low,
+                    "close": e.price,
+                    "volume": e.volume,
+                    "closed": e.is_closed,
+                    "fast_sma": e.fast_sma,
+                    "slow_sma": e.slow_sma,
+                    "rsi": e.rsi,
+                }
+                self.chart_candles.append(candle)
+                self._chart_by_start[e.candle_start_ms] = candle
+            else:
+                candle["open"] = e.open
+                candle["high"] = e.high
+                candle["low"] = e.low
+                candle["close"] = e.price
+                candle["volume"] = e.volume
+                candle["closed"] = e.is_closed
+                candle["fast_sma"] = e.fast_sma
+                candle["slow_sma"] = e.slow_sma
+                candle["rsi"] = e.rsi
+
             self.latency_history.append({
                 "ts": e.ts,
                 "eval_ms": e.strategy_eval_ms,
@@ -180,6 +267,7 @@ class MetricsStore:
                 "price": e.price,
                 "reason": e.reason,
                 "order_id": e.order_id,
+                "candle_start_ms": e.candle_start_ms,
             })
 
     def apply_fill(self, e: FillEvent):
@@ -195,6 +283,7 @@ class MetricsStore:
                 "slippage": e.slippage,
                 "signal_to_fill_ms": e.signal_to_fill_ms,
                 "realized_pnl": e.realized_pnl,
+                "candle_start_ms": e.candle_start_ms,
             })
 
     def apply_position(self, e: PositionEvent):
@@ -237,6 +326,7 @@ class MetricsStore:
                 "warmup_target":     self.warmup_target,
                 "strategy_ready":    self.strategy_ready,
                 "price_history":     list(self.price_history),
+                "chart_candles":     list(self.chart_candles),
                 "latency_history":   list(self.latency_history),
                 "signals":           list(self.signals),
                 "fills":             list(self.fills),

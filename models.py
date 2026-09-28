@@ -17,11 +17,17 @@ class Quote:
     close: float
     volume: float
     is_closed: bool
+    # Unix milliseconds for the start of the candle.
+    # Used to distinguish repeated live updates from different candles.
+    candle_start_ms: int = 0
+    # Monotonic timestamp captured immediately before the quote enters
+    # candle_queue. This lets the engine measure real queue latency.
+    enqueued_at: float = field(default_factory=time.perf_counter, repr=False, compare=False)
 
     @property
     def candle_colour(self) -> CandleColour | None:
         if not self.is_closed:
-            return
+            return None
 
         if self.close > self.open:
             return CandleColour.GREEN
@@ -52,11 +58,13 @@ class OrderRequest:
     side: OrderSide
     order_type: OrderType
     quantity: float
-    price: float                     # market price at signal time
-    limit_price: float | None = None # only for LIMIT orders
-    signal_reason: str = ""          # e.g. "SMA_CROSS_UP + RSI_OVERSOLD"
+    price: float
+    limit_price: float | None = None
+    signal_reason: str = ""
     order_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     created_at: float = field(default_factory=time.time)
+    # Candle that caused the signal. Useful for deduplication/auditing.
+    signal_candle_start_ms: int | None = None
 
     def __str__(self):
         return (

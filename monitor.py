@@ -141,6 +141,7 @@ class MonitorServer:
                         "data": {
                             "symbol":              event.symbol,
                             "price":               event.price,
+                            "candle_start_ms":     event.candle_start_ms,
                             "open":                event.open,
                             "high":                event.high,
                             "low":                 event.low,
@@ -170,6 +171,7 @@ class MonitorServer:
                             "price":        event.price,
                             "reason":       event.reason,
                             "order_id":     event.order_id,
+                            "candle_start_ms": event.candle_start_ms,
                             "signal_count": self.metrics_store.signal_count,
                             "ts":           event.ts,
                         }
@@ -185,6 +187,7 @@ class MonitorServer:
                             "side":              event.side,
                             "quantity":          event.quantity,
                             "fill_price":        event.fill_price,
+                            "candle_start_ms":   event.candle_start_ms,
                             "slippage":          event.slippage,
                             "signal_to_fill_ms": event.signal_to_fill_ms,
                             "realized_pnl":      event.realized_pnl,

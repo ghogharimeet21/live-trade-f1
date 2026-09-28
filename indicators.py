@@ -2,14 +2,17 @@ from collections import deque
 
 
 class SMA:
+    """Simple moving average with a non-mutating intrabar preview."""
 
     def __init__(self, period: int):
+        if period <= 0:
+            raise ValueError("SMA period must be positive")
+
         self.period = period
         self.values = deque(maxlen=period)
         self.total = 0.0
 
     def update(self, value: float) -> float | None:
-
         if len(self.values) == self.period:
             self.total -= self.values[0]
 
@@ -21,45 +24,114 @@ class SMA:
 
         return self.total / self.period
 
+    def preview(self, value: float) -> float | None:
+        """
+        Calculate SMA as if `value` were the current candle close without
+        changing the committed indicator state.
+        """
+        if len(self.values) < self.period - 1:
+            return None
+
+        total = self.total
+        if len(self.values) == self.period:
+            total -= self.values[0]
+
+        total += value
+        return total / self.period
+
 
 class RSI:
     """
-    Relative Strength Index using Wilder's smoothing.
-    Returns None until it has enough history to be meaningful.
+    RSI using Wilder's smoothing.
+
+    `update()` commits one completed candle.
+    `preview()` evaluates the current live candle without mutating state.
     """
 
     def __init__(self, period: int = 14):
+        if period <= 0:
+            raise ValueError("RSI period must be positive")
+
         self.period = period
-        self.prev_close = None
-        self.avg_gain = None
-        self.avg_loss = None
+        self.prev_close: float | None = None
+
+        # Seed state during the first `period` price changes.
+        self._gain_sum = 0.0
+        self._loss_sum = 0.0
+        self._seed_count = 0
+
+        # Wilder-smoothed state after warmup.
+        self.avg_gain: float | None = None
+        self.avg_loss: float | None = None
+
+    @staticmethod
+    def _value(avg_gain: float, avg_loss: float) -> float:
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return 100.0 - (100.0 / (1.0 + rs))
 
     def update(self, close: float) -> float | None:
         if self.prev_close is None:
             self.prev_close = close
-            return
+            return None
 
         change = close - self.prev_close
         self.prev_close = close
-        gain = max(change, 0)
-        loss = max(-change, 0)
+        gain = max(change, 0.0)
+        loss = max(-change, 0.0)
 
-        if self.avg_gain is None:
-            self.avg_gain = gain
-            self.avg_loss = loss
-            return
+        if self.avg_gain is None or self.avg_loss is None:
+            self._gain_sum += gain
+            self._loss_sum += loss
+            self._seed_count += 1
 
-        self.avg_gain = (self.avg_gain * (self.period - 1) + gain) / self.period
-        self.avg_loss = (self.avg_loss * (self.period - 1) + loss) / self.period
+            if self._seed_count < self.period:
+                return None
 
-        if self.avg_loss == 0:
-            return 100.0
+            self.avg_gain = self._gain_sum / self.period
+            self.avg_loss = self._loss_sum / self.period
+            return self._value(self.avg_gain, self.avg_loss)
 
-        rs = self.avg_gain / self.avg_loss
-        return 100 - (100 / (1 + rs))
+        self.avg_gain = (
+            self.avg_gain * (self.period - 1) + gain
+        ) / self.period
+        self.avg_loss = (
+            self.avg_loss * (self.period - 1) + loss
+        ) / self.period
 
+        return self._value(self.avg_gain, self.avg_loss)
 
+    def preview(self, close: float) -> float | None:
+        """Calculate one intrabar RSI value without changing state."""
+        if self.prev_close is None:
+            return None
 
+        change = close - self.prev_close
+        gain = max(change, 0.0)
+        loss = max(-change, 0.0)
+
+        # Still in RSI warmup. We can preview the would-be next seed value.
+        if self.avg_gain is None or self.avg_loss is None:
+            count = self._seed_count + 1
+            gain_sum = self._gain_sum + gain
+            loss_sum = self._loss_sum + loss
+            if count < self.period:
+                return None
+
+            return self._value(
+                gain_sum / self.period,
+                loss_sum / self.period,
+            )
+
+        avg_gain = (
+            self.avg_gain * (self.period - 1) + gain
+        ) / self.period
+        avg_loss = (
+            self.avg_loss * (self.period - 1) + loss
+        ) / self.period
+
+        return self._value(avg_gain, avg_loss)
 
 
 class EMA:
@@ -83,11 +155,6 @@ class EMA:
 
 
 class MACD:
-    """
-    MACD = EMA(fast) - EMA(slow), with a signal EMA of the MACD line.
-    Returns None until the slow EMA (the longer of the two) has warmed up.
-    """
-
     def __init__(self, fast: int = 12, slow: int = 26, signal: int = 9):
         self.fast_ema = EMA(fast)
         self.slow_ema = EMA(slow)
@@ -112,11 +179,6 @@ class MACD:
 
 
 class BollingerBands:
-    """
-    SMA +/- k * rolling stddev. Keeps a bounded deque of squared values
-    to compute variance incrementally without re-scanning the window.
-    """
-
     def __init__(self, period: int = 20, num_std: float = 2.0):
         self.period = period
         self.num_std = num_std
@@ -147,11 +209,6 @@ class BollingerBands:
 
 
 class ATR:
-    """
-    Average True Range using Wilder's smoothing.
-    Needs high, low, close per bar (not just close).
-    """
-
     def __init__(self, period: int = 14):
         self.period = period
         self.prev_close: float | None = None
@@ -184,11 +241,6 @@ class ATR:
 
 
 class Stochastic:
-    """
-    Stochastic Oscillator (%K, %D). %K uses a rolling high/low window,
-    %D is an SMA of %K. Needs high, low, close per bar.
-    """
-
     def __init__(self, k_period: int = 14, d_period: int = 3):
         self.k_period = k_period
         self.highs: deque[float] = deque(maxlen=k_period)
