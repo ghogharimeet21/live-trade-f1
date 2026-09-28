@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>F1 | High-Frequency Live Trading & Strategy Telemetry</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:        #080a0f;
+      --surface:   #0f1420;
+      --surface2:  #171e30;
+      --surface3:  #1e2840;
+      --border:    #1c253b;
+      --border-lit:#2a3754;
+      --accent:    #3b82f6;
+      --accent-g:  #10b981;
+      --accent-r:  #ef4444;
+      --accent-y:  #f59e0b;
+      --accent-p:  #8b5cf6;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --mono:      'JetBrains Mono', monospace;
+      --sans:      'Inter', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.4;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15, 20, 32, 0.85);
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: 15px; letter-spacing: -0.2px;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+    .logo-dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--accent-g);
+      box-shadow: 0 0 10px var(--accent-g);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.85); }
+    }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .ws-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--muted);
+      font-family: var(--mono);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+    .ws-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent-r);
+      transition: background 0.4s;
+    }
+    .ws-dot.connected { background: var(--accent-g); box-shadow: 0 0 6px var(--accent-g); }
+    #last-update { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+    /* ── Layout ── */
+    .main { padding: 18px 24px 36px; display: flex; flex-direction: column; gap: 16px; max-width: 1600px; margin: 0 auto; }
+
+    /* ── Price Hero ── */
+    .price-hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 24px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .price-block .symbol-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .price-block .symbol { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+    .price-block .timeframe {
+      font-size: 10px; font-family: var(--mono); font-weight: 600;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--accent); padding: 1px 6px; border-radius: 4px;
+    }
+    .price-block .price  { font-family: var(--mono); font-size: 34px; font-weight: 700; letter-spacing: -0.5px; transition: color 0.25s; }
+    .price-block .price.up   { color: var(--accent-g); }
+    .price-block .price.down { color: var(--accent-r); }
+    #mini-chart-wrap { height: 64px; min-width: 0; }
+    .hero-stats { display: flex; gap: 10px; }
+    .stat-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .stat-pill .label { color: var(--muted); font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .stat-pill .val   { font-weight: 700; font-size: 13px; color: var(--text); }
+
+    /* ── Grids ── */
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    @media (max-width: 1024px) {
+      .grid3 { grid-template-columns: 1fr; }
+      .grid2 { grid-template-columns: 1fr; }
+      .price-hero { grid-template-columns: 1fr; }
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .card-header {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(23, 30, 48, 0.4);
+    }
+    .card-body { padding: 16px; }
+
+    /* ── Position card ── */
+    .position-state {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .pos-badge {
+      padding: 4px 12px; border-radius: 20px;
+      font-weight: 700; font-size: 11px; letter-spacing: 0.5px;
+      font-family: var(--mono);
+    }
+    .pos-badge.LONG  { background: rgba(16,185,129,0.15); color: var(--accent-g); border: 1px solid rgba(16,185,129,0.3); }
+    .pos-badge.SHORT { background: rgba(239,68,68,0.15);  color: var(--accent-r); border: 1px solid rgba(239,68,68,0.3);  }
+    .pos-badge.FLAT  { background: rgba(100,116,139,0.15); color: var(--muted);   border: 1px solid var(--border); }
+    .upnl-wrap { text-align: right; }
+    .upnl-label { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+    .upnl { font-size: 18px; font-family: var(--mono); font-weight: 700; }
+    .upnl.pos { color: var(--accent-g); }
+    .upnl.neg { color: var(--accent-r); }
+    .pos-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pos-item .pl { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+    .pos-item .pv { font-family: var(--mono); font-weight: 600; font-size: 13px; }
+
+    /* ── PnL card ── */
+    .pnl-big {
+      font-size: 26px; font-family: var(--mono); font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .pnl-big.pos { color: var(--accent-g); }
+    .pnl-big.neg { color: var(--accent-r); }
+    .pnl-meta { display: flex; gap: 20px; border-top: 1px solid var(--border); padding-top: 10px; }
+    .pnl-meta .item { font-size: 11px; color: var(--muted); }
+    .pnl-meta .item span { color: var(--text); font-weight: 600; margin-left: 5px; font-family: var(--mono); }
+
+    /* ── Latency card ── */
+    .lat-gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .gauge-box {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; text-align: center;
+    }
+    .gauge-box .gl { font-size: 10px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .gauge-box .gv { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+    .gauge-box .gu { font-size: 9px; color: var(--muted); margin-top: 1px; }
+    .gauge-box.fast .gv { color: var(--accent-g); }
+    .gauge-box.med  .gv { color: var(--accent-y); }
+    .gauge-box.slow .gv { color: var(--accent-r); }
+
+    .queue-bars { display: flex; flex-direction: column; gap: 6px; }
+    .qbar-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .qbar-label { width: 70px; color: var(--muted); font-family: var(--mono); font-size: 10px; }
+    .qbar-track {
+      flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+    }
+    .qbar-fill {
+      height: 100%; border-radius: 3px;
+      transition: width 0.3s ease;
+      background: linear-gradient(90deg, var(--accent), #6366f1);
+    }
+    .qbar-val { width: 28px; text-align: right; font-family: var(--mono); font-weight: 600; font-size: 11px; }
+
+    /* ── Strategy & Indicators Card ── */
+    .strat-badge {
+      padding: 3px 8px; border-radius: 4px;
+      font-size: 10px; font-family: var(--mono); font-weight: 700;
+    }
+    .strat-badge.warming { background: rgba(245, 158, 11, 0.15); color: var(--accent-y); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .strat-badge.active  { background: rgba(16, 185, 129, 0.15); color: var(--accent-g); border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    .warmup-section { margin-bottom: 14px; }
+    .warmup-label-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 5px; font-family: var(--mono); }
+    .wl-text { color: var(--muted); }
+    .wl-val { font-weight: 600; color: var(--accent); }
+    .warmup-track {
+      height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+    }
+    .warmup-fill {
+      height: 100%; border-radius: 3px;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      transition: width 0.4s ease;
+    }
+
+    .indicators-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .indicator-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .indicator-pill .ind-name { font-size: 10px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; font-weight: 600; }
+    .indicator-pill .ind-val  { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+    .indicator-pill .ind-sub  { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+
+    /* ── RSI Meter ── */
+    .rsi-section {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .rsi-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .rsi-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+    .rsi-reading { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--text); }
+    .rsi-status-badge {
+      font-size: 9px; font-family: var(--mono); font-weight: 700;
+      padding: 2px 7px; border-radius: 4px;
+      background: rgba(100, 116, 139, 0.2); color: var(--muted);
+    }
+    .rsi-status-badge.oversold   { background: rgba(16, 185, 129, 0.2); color: var(--accent-g); border: 1px solid rgba(16, 185, 129, 0.4); }
+    .rsi-status-badge.overbought { background: rgba(239, 68, 68, 0.2); color: var(--accent-r); border: 1px solid rgba(239, 68, 68, 0.4); }
+    .rsi-status-badge.neutral    { background: rgba(59, 130, 246, 0.2); color: var(--accent); border: 1px solid rgba(59, 130, 246, 0.4); }
+
+    .rsi-track-wrap { position: relative; padding: 6px 0; }
+    .rsi-track {
+      height: 8px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #10b981 0%, #10b981 30%, #3b82f6 30%, #3b82f6 70%, #ef4444 70%, #ef4444 100%);
+      position: relative;
+    }
+    .rsi-marker {
+      position: absolute;
+      top: -4px;
+      width: 4px;
+      height: 16px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(255,255,255,0.9);
+      transform: translateX(-50%);
+      transition: left 0.3s ease;
+    }
+    .rsi-labels {
+      display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); font-family: var(--mono); margin-top: 6px;
+    }
+    .rsi-conditions {
+      display: flex; gap: 16px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; font-family: var(--mono);
+    }
+    .rsi-cond { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .rsi-cond.pass { color: var(--accent-g); }
+    .rsi-cond.fail { color: var(--muted); opacity: 0.6; }
+    .cond-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .cond-dot.pass { background: var(--accent-g); box-shadow: 0 0 6px var(--accent-g); }
+    .cond-dot.fail { background: var(--accent-r); }
+
+    /* ── Latency Chart Card ── */
+    .lat-chart-wrap { height: 180px; width: 100%; position: relative; }
+
+    /* ── Logs ── */
+    .log-list { display: flex; flex-direction: column; gap: 1px; max-height: 240px; overflow-y: auto; }
+    .log-list::-webkit-scrollbar { width: 4px; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-item {
+      display: grid;
+      grid-template-columns: 18px 70px 90px 1fr;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      animation: slide-in 0.25s ease;
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .log-item:hover { background: var(--surface2); }
+    .log-item .side-icon { font-size: 13px; }
+    .log-item .li-time  { color: var(--muted); font-size: 10px; }
+    .log-item .li-price { font-weight: 600; }
+    .log-item .li-reason { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-item.BUY  { border-left: 2px solid var(--accent-g); }
+    .log-item.SELL { border-left: 2px solid var(--accent-r); }
+
+    .fill-item {
+      display: grid;
+      grid-template-columns: 18px 65px 75px 1fr 80px;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      animation: slide-in 0.25s ease;
+    }
+    .fill-item:hover { background: var(--surface2); }
+    .fill-item.BUY  { border-left: 2px solid var(--accent-g); }
+    .fill-item.SELL { border-left: 2px solid var(--accent-r); }
+    .fill-pnl.pos { color: var(--accent-g); font-weight: 600; }
+    .fill-pnl.neg { color: var(--accent-r); font-weight: 600; }
+    .fill-pnl.neu { color: var(--muted); }
+
+    .empty-state { text-align: center; color: var(--muted); padding: 28px; font-size: 11px; font-family: var(--mono); }
+
+    /* ── Ticker feed ── */
+    .ticker-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+    .tick-header {
+      padding: 9px 16px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 90px 100px 100px 100px 100px 100px 80px;
+      gap: 12px;
+      font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+      background: rgba(23, 30, 48, 0.4);
+    }
+    .tick-rows { max-height: 220px; overflow-y: auto; }
+    .tick-rows::-webkit-scrollbar { width: 4px; }
+    .tick-rows::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tick-row {
+      padding: 7px 16px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 90px 100px 100px 100px 100px 100px 80px;
+      gap: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      align-items: center;
+      animation: slide-in 0.2s ease;
+    }
+    .tick-row:last-child { border-bottom: none; }
+    .tick-row .closed-tag {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      font-size: 9px; font-weight: 700;
+    }
+    .tick-row .closed-tag.yes { background: rgba(16,185,129,0.15); color: var(--accent-g); border: 1px solid rgba(16,185,129,0.3); }
+    .tick-row .closed-tag.no  { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+    .val-up   { color: var(--accent-g); font-weight: 600; }
+    .val-down { color: var(--accent-r); font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot" id="live-dot"></div>
+    <span>F1 Quantitative Engine</span>
+    <span class="logo-badge">PAPER LIVE</span>
+  </div>
+  <div class="header-right">
+    <div class="ws-badge">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-status">Connecting...</span>
+    </div>
+    <div id="last-update">—</div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Price Hero -->
+  <div class="price-hero">
+    <div class="price-block">
+      <div class="symbol-row">
+        <span class="symbol" id="h-symbol">BTCUSDT</span>
+        <span class="timeframe">2m KLINE</span>
+      </div>
+      <div class="price" id="h-price">—</div>
+    </div>
+    <div id="mini-chart-wrap">
+      <canvas id="mini-chart"></canvas>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-pill"><span class="label">PROCESSED TICKS</span><span class="val" id="tick-count">0</span></div>
+      <div class="stat-pill"><span class="label">SIGNALS FIRED</span><span class="val" id="sig-count">0</span></div>
+      <div class="stat-pill"><span class="label">EXECUTED TRADES</span><span class="val" id="trade-count">0</span></div>
+    </div>
+  </div>
+
+  <!-- Row 1: Position + PnL + Latency Telemetry -->
+  <div class="grid3">
+
+    <!-- Position -->
+    <div class="card">
+      <div class="card-header">
+        <span>Position State</span>
+        <span class="pos-badge FLAT" id="pos-badge">FLAT</span>
+      </div>
+      <div class="card-body">
+        <div class="position-state">
+          <div>
+            <div class="upnl-label">Unrealized PnL</div>
+            <div class="upnl" id="pos-upnl">0.0000 USDT</div>
+          </div>
+        </div>
+        <div class="pos-detail">
+          <div class="pos-item"><div class="pl">Avg Entry Price</div><div class="pv" id="pos-entry">—</div></div>
+          <div class="pos-item"><div class="pl">Position Quantity</div><div class="pv" id="pos-qty">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PnL -->
+    <div class="card">
+      <div class="card-header">Realized PnL (Session)</div>
+      <div class="card-body">
+        <div class="pnl-big" id="rpnl">0.0000 <span style="font-size:13px;font-weight:400;color:var(--muted)">USDT</span></div>
+        <div class="pnl-meta">
+          <div class="item">Completed Trades<span id="pnl-trades">0</span></div>
+          <div class="item">Avg PnL / Trade<span id="pnl-avg">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline Latency Telemetry -->
+    <div class="card">
+      <div class="card-header">
+        <span>Pipeline Latency</span>
+        <span style="font-size:10px;font-family:var(--mono);color:var(--muted)">Zero-Blocking</span>
+      </div>
+      <div class="card-body">
+        <div class="lat-gauges">
+          <div class="gauge-box fast" id="gauge-eval">
+            <div class="gl">Strategy Eval</div>
+            <div class="gv" id="g-eval">—</div>
+            <div class="gu">ms (target &lt;1ms)</div>
+          </div>
+          <div class="gauge-box fast" id="gauge-lat">
+            <div class="gl">Queue In-Flight</div>
+            <div class="gv" id="g-lat">—</div>
+            <div class="gu">ms latency</div>
+          </div>
+        </div>
+        <div class="queue-bars">
+          <div class="qbar-row">
+            <div class="qbar-label">candle_q</div>
+            <div class="qbar-track"><div class="qbar-fill" id="qbar-candle" style="width:0%"></div></div>
+            <div class="qbar-val" id="qval-candle">0</div>
+          </div>
+          <div class="qbar-row">
+            <div class="qbar-label">order_q</div>
+            <div class="qbar-track"><div class="qbar-fill" id="qbar-order" style="width:0%"></div></div>
+            <div class="qbar-val" id="qval-order">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 2: Strategy Insights & Indicators + Latency Chart -->
+  <div class="grid2">
+
+    <!-- Strategy Insights & Indicators -->
+    <div class="card">
+      <div class="card-header">
+        <span>Strategy & Indicators (SMA 12/50 + RSI 14)</span>
+        <span class="strat-badge warming" id="strat-status-badge">WARMING UP</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Warmup Progress -->
+        <div class="warmup-section" id="warmup-box">
+          <div class="warmup-label-row">
+            <span class="wl-text">Indicator Warmup History:</span>
+            <span class="wl-val" id="warmup-val">0 / 50 candles (0%)</span>
+          </div>
+          <div class="warmup-track">
+            <div class="warmup-fill" id="warmup-fill" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Indicators Grid -->
+        <div class="indicators-grid">
+          <div class="indicator-pill">
+            <div class="ind-name">Fast SMA (12)</div>
+            <div class="ind-val" id="ind-fast-sma">—</div>
+            <div class="ind-sub" id="ind-fast-sub">Short-term trend</div>
+          </div>
+          <div class="indicator-pill">
+            <div class="ind-name">Slow SMA (50)</div>
+            <div class="ind-val" id="ind-slow-sma">—</div>
+            <div class="ind-sub" id="ind-slow-sub">Baseline trend</div>
+          </div>
+          <div class="indicator-pill">
+            <div class="ind-name">SMA Spread</div>
+            <div class="ind-val" id="ind-spread">—</div>
+            <div class="ind-sub" id="ind-cross-state">Waiting for warmup...</div>
+          </div>
+        </div>
+
+        <!-- RSI Visual Gauge -->
+        <div class="rsi-section">
+          <div class="rsi-header">
+            <span class="rsi-title">RSI (14) Filter</span>
+            <span class="rsi-reading" id="rsi-val">—</span>
+            <span class="rsi-status-badge" id="rsi-zone-badge">WARMING UP</span>
+          </div>
+          <div class="rsi-track-wrap">
+            <div class="rsi-track">
+              <div class="rsi-marker" id="rsi-marker" style="left: 50%"></div>
+            </div>
+          </div>
+          <div class="rsi-labels">
+            <span>0 (Oversold)</span>
+            <span>30</span>
+            <span>50</span>
+            <span>70</span>
+            <span>100 (Overbought)</span>
+          </div>
+          <div class="rsi-conditions">
+            <div class="rsi-cond" id="rsi-cond-buy">Buy Filter: RSI &lt; 60 <span class="cond-dot" id="dot-buy"></span></div>
+            <div class="rsi-cond" id="rsi-cond-sell">Sell Filter: RSI &gt; 40 <span class="cond-dot" id="dot-sell"></span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Pipeline Latency History Chart -->
+    <div class="card">
+      <div class="card-header">
+        <span>Execution Latency History (Real-Time)</span>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">
+          Min: <span id="lat-min" style="color:var(--accent-g)">0.00ms</span> | Max: <span id="lat-max" style="color:var(--accent-r)">0.00ms</span>
+        </div>
+      </div>
+      <div class="card-body" style="padding-top:12px">
+        <div class="lat-chart-wrap">
+          <canvas id="lat-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 3: Signal Log + Fill Log -->
+  <div class="grid2">
+
+    <!-- Signal Log -->
+    <div class="card">
+      <div class="card-header">
+        <span>Strategy Signal Log</span>
+        <span style="font-family:var(--mono);font-size:10px" id="sig-badge">0 signals</span>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="log-list" id="signal-log">
+          <div class="empty-state">Waiting for strategy signals on closed candles...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fill Log -->
+    <div class="card">
+      <div class="card-header">
+        <span>Order Execution & Paper Fills</span>
+        <span style="font-family:var(--mono);font-size:10px" id="fill-badge">0 fills</span>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="log-list" id="fill-log">
+          <div class="empty-state">No fills yet — awaiting trade triggers...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 4: Live Tick Feed Table -->
+  <div class="ticker-section">
+    <div class="card-header" style="padding:12px 16px">
+      <span>Live Tick Feed (Streaming OHLCV)</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">Real-time WebSocket Push</span>
+    </div>
+    <div class="tick-header">
+      <div>Time (IST)</div><div>Close Price</div><div>Open</div><div>High</div><div>Low</div><div>Volume</div><div>Status</div>
+    </div>
+    <div class="tick-rows" id="tick-feed">
+      <div class="empty-state">Connecting to feed...</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────── //
+let lastPrice = null;
+let priceHistory = [];
+let latHistory   = [];
+let miniChart    = null;
+let latChart     = null;
+let posEntry = 0, posQty = 0, posSide = "FLAT";
+
+// ── Charts ────────────────────────────────────────────────────────────── //
+function initMiniChart() {
+  const ctx = document.getElementById("mini-chart").getContext("2d");
+  miniChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: "#3b82f6",
+        borderWidth: 1.8,
+        pointRadius: 0,
+        tension: 0.25,
+        fill: true,
+        backgroundColor: (c) => {
+          const g = c.chart.ctx.createLinearGradient(0, 0, 0, 64);
+          g.addColorStop(0, "rgba(59,130,246,0.22)");
+          g.addColorStop(1, "rgba(59,130,246,0)");
+          return g;
+        }
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } }
+    }
+  });
+}
+
+function initLatChart() {
+  const ctx = document.getElementById("lat-chart").getContext("2d");
+  latChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Strategy Eval (ms)",
+          data: [],
+          borderColor: "#10b981",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.2,
+          fill: false,
+        },
+        {
+          label: "Queue Latency (ms)",
+          data: [],
+          borderColor: "#6366f1",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.2,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 0 },
+      plugins: {
+        legend: {
+          display: true,
+          position: "top",
+          align: "end",
+          labels: { color: "#64748b", font: { size: 10, family: "JetBrains Mono" }, boxWidth: 12 }
+        }
+      },
+      scales: {
+        x: { display: false },
+        y: {
+          ticks: { color: "#64748b", font: { size: 10, family: "JetBrains Mono" } },
+          grid:  { color: "#1c253b" }
+        }
+      }
+    }
+  });
+}
+
+// ── DOM Helpers ───────────────────────────────────────────────────────── //
+function ts2time(ts) {
+  if (!ts) return "—";
+  return new Date(ts * 1000).toLocaleTimeString("en-IN", { hour12: false });
+}
+function fmt(v, d=4) {
+  if (v === null || v === undefined || isNaN(v)) return "—";
+  return Number(v).toFixed(d);
+}
+
+function updatePrice(price) {
+  const el = document.getElementById("h-price");
+  const dir = lastPrice === null ? "" : price > lastPrice ? "up" : price < lastPrice ? "down" : "";
+  el.className = "price " + dir;
+  el.textContent = fmt(price, 2);
+  lastPrice = price;
+}
+
+function updateMiniChart(history) {
+  if (!miniChart || history.length < 2) return;
+  miniChart.data.labels  = history.map(() => "");
+  miniChart.data.datasets[0].data = history.map(h => h.price);
+  miniChart.update("none");
+}
+
+function updateLatChart(history) {
+  if (!latChart || history.length < 2) return;
+  latChart.data.labels = history.map(() => "");
+  latChart.data.datasets[0].data = history.map(h => h.eval_ms);
+  latChart.data.datasets[1].data = history.map(h => h.latency_ms);
+  latChart.update("none");
+
+  const evals = history.map(h => h.eval_ms).filter(v => v !== undefined);
+  if (evals.length) {
+    document.getElementById("lat-min").textContent = fmt(Math.min(...evals), 2) + "ms";
+    document.getElementById("lat-max").textContent = fmt(Math.max(...evals), 2) + "ms";
+  }
+}
+
+function setGaugeClass(el, ms) {
+  if (!el) return;
+  el.className = "gauge-box " + (ms < 1.0 ? "fast" : ms < 5.0 ? "med" : "slow");
+}
+
+function updateQueues(cq, oq) {
+  const cPct = Math.min((cq / 20) * 100, 100);
+  const oPct = Math.min((oq / 10) * 100, 100);
+  document.getElementById("qbar-candle").style.width = cPct + "%";
+  document.getElementById("qbar-order").style.width  = oPct + "%";
+  document.getElementById("qval-candle").textContent = cq;
+  document.getElementById("qval-order").textContent  = oq;
+}
+
+// ── Strategy & Indicator Insights Handler ─────────────────────────────── //
+function applyStrategyInsights(d) {
+  const count = d.warmup_count !== undefined ? d.warmup_count : 0;
+  const target = d.warmup_target !== undefined ? d.warmup_target : 50;
+  const ready = d.strategy_ready !== undefined ? d.strategy_ready : false;
+  const pct = Math.min(Math.round((count / target) * 100), 100);
+
+  const warmupFill = document.getElementById("warmup-fill");
+  const warmupVal  = document.getElementById("warmup-val");
+  const stratBadge = document.getElementById("strat-status-badge");
+
+  if (warmupFill) warmupFill.style.width = pct + "%";
+  if (warmupVal)  warmupVal.textContent = `${count} / ${target} candles (${pct}%)`;
+
+  if (ready) {
+    if (stratBadge) {
+      stratBadge.textContent = "ACTIVE (EVALUATING)";
+      stratBadge.className = "strat-badge active";
+    }
+  } else {
+    if (stratBadge) {
+      stratBadge.textContent = `WARMING UP (${count}/${target})`;
+      stratBadge.className = "strat-badge warming";
+    }
+  }
+
+  // Indicators
+  const fast = d.fast_sma;
+  const slow = d.slow_sma;
+  const rsi  = d.rsi;
+
+  const elFast   = document.getElementById("ind-fast-sma");
+  const elSlow   = document.getElementById("ind-slow-sma");
+  const elSpread = document.getElementById("ind-spread");
+  const elCross  = document.getElementById("ind-cross-state");
+
+  if (elFast) elFast.textContent = fast !== null && fast !== undefined ? fmt(fast, 2) : "—";
+  if (elSlow) elSlow.textContent = slow !== null && slow !== undefined ? fmt(slow, 2) : "—";
+
+  if (fast !== null && slow !== null && fast !== undefined && slow !== undefined) {
+    const spread = fast - slow;
+    const spreadPct = (spread / slow) * 100;
+    if (elSpread) {
+      elSpread.textContent = (spread >= 0 ? "+" : "") + fmt(spread, 2);
+      elSpread.className = "ind-val " + (spread >= 0 ? "val-up" : "val-down");
+    }
+    if (elCross) {
+      if (spread > 0) {
+        elCross.textContent = `Bullish (Fast > Slow by +${fmt(spreadPct, 2)}%)`;
+        elCross.className = "ind-sub val-up";
+      } else {
+        elCross.textContent = `Bearish (Fast < Slow by ${fmt(spreadPct, 2)}%)`;
+        elCross.className = "ind-sub val-down";
+      }
+    }
+  } else {
+    if (elSpread) elSpread.textContent = "—";
+    if (elCross) {
+      elCross.textContent = "Waiting for warmup...";
+      elCross.className = "ind-sub";
+    }
+  }
+
+  // RSI
+  const elRsiVal    = document.getElementById("rsi-val");
+  const elRsiBadge  = document.getElementById("rsi-zone-badge");
+  const elRsiMarker = document.getElementById("rsi-marker");
+  const elBuyCond   = document.getElementById("rsi-cond-buy");
+  const elSellCond  = document.getElementById("rsi-cond-sell");
+
+  if (rsi !== null && rsi !== undefined) {
+    if (elRsiVal) elRsiVal.textContent = fmt(rsi, 2);
+    const clampedRsi = Math.max(0, Math.min(100, rsi));
+    if (elRsiMarker) elRsiMarker.style.left = clampedRsi + "%";
+
+    let zone = "NEUTRAL";
+    let zoneClass = "neutral";
+    if (rsi <= 30) {
+      zone = "OVERSOLD (≤30)";
+      zoneClass = "oversold";
+    } else if (rsi >= 70) {
+      zone = "OVERBOUGHT (≥70)";
+      zoneClass = "overbought";
+    } else if (rsi < 50) {
+      zone = "NEUTRAL (BEARISH BIAS)";
+    } else {
+      zone = "NEUTRAL (BULLISH BIAS)";
+    }
+
+    if (elRsiBadge) {
+      elRsiBadge.textContent = zone;
+      elRsiBadge.className = "rsi-status-badge " + zoneClass;
+    }
+
+    const buyPass = rsi < 60;
+    const sellPass = rsi > 40;
+    if (elBuyCond) {
+      elBuyCond.className = "rsi-cond " + (buyPass ? "pass" : "fail");
+      elBuyCond.innerHTML = `Buy Filter: RSI &lt; 60 <span class="cond-dot ${buyPass ? 'pass' : 'fail'}"></span>`;
+    }
+    if (elSellCond) {
+      elSellCond.className = "rsi-cond " + (sellPass ? "pass" : "fail");
+      elSellCond.innerHTML = `Sell Filter: RSI &gt; 40 <span class="cond-dot ${sellPass ? 'pass' : 'fail'}"></span>`;
+    }
+  } else {
+    if (elRsiVal) elRsiVal.textContent = "—";
+    if (elRsiMarker) elRsiMarker.style.left = "50%";
+    if (elRsiBadge) {
+      elRsiBadge.textContent = "WARMING UP";
+      elRsiBadge.className = "rsi-status-badge";
+    }
+  }
+}
+
+function applySnapshot(d) {
+  document.getElementById("h-symbol").textContent = d.symbol || "BTCUSDT";
+  if (d.latest_price) updatePrice(d.latest_price);
+  document.getElementById("tick-count").textContent  = d.tick_count;
+  document.getElementById("sig-count").textContent   = d.signal_count;
+  document.getElementById("trade-count").textContent = d.trade_count;
+
+  updateMiniChart(d.price_history || []);
+  updateLatChart(d.latency_history || []);
+
+  setGaugeClass(document.getElementById("gauge-eval"), d.avg_eval_ms);
+  setGaugeClass(document.getElementById("gauge-lat"),  d.avg_latency_ms);
+  document.getElementById("g-eval").textContent = fmt(d.avg_eval_ms, 3);
+  document.getElementById("g-lat").textContent  = fmt(d.avg_latency_ms, 3);
+  updateQueues(d.candle_q_depth || 0, d.order_q_depth || 0);
+
+  applyPosition(d);
+  applyPnl(d);
+  applyStrategyInsights(d);
+
+  if (d.signals && d.signals.length) renderSignals(d.signals);
+  if (d.fills && d.fills.length) renderFills(d.fills);
+}
+
+function applyPosition(d) {
+  posEntry = d.position_entry || 0;
+  posQty   = d.position_qty   || 0;
+  posSide  = d.position_side  || "FLAT";
+  const badge = document.getElementById("pos-badge");
+  badge.textContent  = posSide;
+  badge.className    = "pos-badge " + posSide;
+  document.getElementById("pos-entry").textContent = posSide === "FLAT" ? "—" : fmt(posEntry, 2);
+  document.getElementById("pos-qty").textContent   = posSide === "FLAT" ? "—" : fmt(posQty, 5);
+  updateUpnl(d.latest_price || lastPrice || 0);
+}
+
+function updateUpnl(price) {
+  if (!price || posSide === "FLAT") {
+    document.getElementById("pos-upnl").textContent = "0.0000 USDT";
+    document.getElementById("pos-upnl").className = "upnl";
+    return;
+  }
+  const upnl = posSide === "LONG"
+    ? (price - posEntry) * posQty
+    : (posEntry - price) * posQty;
+  const el = document.getElementById("pos-upnl");
+  el.textContent = (upnl >= 0 ? "+" : "") + fmt(upnl, 4) + " USDT";
+  el.className = "upnl " + (upnl >= 0 ? "pos" : "neg");
+}
+
+function applyPnl(d) {
+  const pnl = d.realized_pnl || 0;
+  const el  = document.getElementById("rpnl");
+  el.innerHTML = (pnl >= 0 ? "+" : "") + fmt(pnl, 4) + ' <span style="font-size:13px;font-weight:400;color:var(--muted)">USDT</span>';
+  el.className = "pnl-big " + (pnl > 0 ? "pos" : pnl < 0 ? "neg" : "");
+  const tc = d.trade_count || 0;
+  document.getElementById("pnl-trades").textContent = tc;
+  document.getElementById("pnl-avg").textContent = tc ? fmt(pnl / tc, 4) : "—";
+}
+
+function renderSignals(signals) {
+  const el = document.getElementById("signal-log");
+  document.getElementById("sig-badge").textContent = `${signals.length} signals`;
+  el.innerHTML = signals.slice(0, 30).map(s => `
+    <div class="log-item ${s.side}">
+      <span class="side-icon">${s.side === "BUY" ? "▲" : "▼"}</span>
+      <span class="li-time">${ts2time(s.ts)}</span>
+      <span class="li-price">${fmt(s.price, 2)}</span>
+      <span class="li-reason">${s.reason}</span>
+    </div>
+  `).join("");
+}
+
+function renderFills(fills) {
+  const el = document.getElementById("fill-log");
+  document.getElementById("fill-badge").textContent = `${fills.length} fills`;
+  el.innerHTML = fills.slice(0, 30).map(f => {
+    const rp = f.realized_pnl;
+    const pnlClass = rp > 0 ? "pos" : rp < 0 ? "neg" : "neu";
+    const pnlStr = rp !== 0
+      ? (rp > 0 ? "+" : "") + fmt(rp, 4) + " USDT"
+      : "open";
+    return `
+      <div class="fill-item ${f.side}">
+        <span class="side-icon">${f.side === "BUY" ? "▲" : "▼"}</span>
+        <span class="li-time">${ts2time(f.ts)}</span>
+        <span class="li-price">${fmt(f.fill_price, 2)}</span>
+        <span class="li-reason">slip:${fmt(f.slippage, 4)} | ${fmt(f.signal_to_fill_ms, 1)}ms</span>
+        <span class="fill-pnl ${pnlClass}">${pnlStr}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+const MAX_TICK_ROWS = 40;
+let tickRows = [];
+
+function addTickRow(t) {
+  tickRows.unshift(t);
+  if (tickRows.length > MAX_TICK_ROWS) tickRows.pop();
+  const el = document.getElementById("tick-feed");
+  el.innerHTML = tickRows.map(row => {
+    const isUp = row.open ? row.price >= row.open : true;
+    return `
+    <div class="tick-row">
+      <div>${ts2time(row.ts)}</div>
+      <div class="${isUp ? 'val-up' : 'val-down'}">${fmt(row.price, 2)}</div>
+      <div style="color:var(--muted)">${row.open ? fmt(row.open, 2) : '—'}</div>
+      <div class="val-up">${row.high ? fmt(row.high, 2) : '—'}</div>
+      <div class="val-down">${row.low ? fmt(row.low, 2) : '—'}</div>
+      <div style="color:var(--muted)">${row.volume ? fmt(row.volume, 4) : '—'}</div>
+      <div><span class="closed-tag ${row.is_closed ? 'yes' : 'no'}">${row.is_closed ? 'CLOSED' : 'LIVE'}</span></div>
+    </div>
+  `;
+  }).join("");
+}
+
+// ── WebSocket Client ─────────────────────────────────────────────────── //
+let ws = null;
+
+function connect() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById("ws-dot").classList.add("connected");
+    document.getElementById("ws-status").textContent = "LIVE STREAMING";
+  };
+
+  ws.onclose = () => {
+    document.getElementById("ws-dot").classList.remove("connected");
+    document.getElementById("ws-status").textContent = "Reconnecting...";
+    setTimeout(connect, 1500);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    document.getElementById("last-update").textContent =
+      new Date().toLocaleTimeString("en-IN", { hour12: false });
+
+    if (msg.type === "snapshot") {
+      applySnapshot(msg.data);
+      return;
+    }
+
+    if (msg.type === "tick") {
+      const d = msg.data;
+      updatePrice(d.price);
+      document.getElementById("tick-count").textContent = d.tick_count;
+      setGaugeClass(document.getElementById("gauge-eval"), d.strategy_eval_ms);
+      setGaugeClass(document.getElementById("gauge-lat"),  d.candle_latency_ms);
+      document.getElementById("g-eval").textContent = fmt(d.strategy_eval_ms, 3);
+      document.getElementById("g-lat").textContent  = fmt(d.candle_latency_ms, 3);
+      updateQueues(d.candle_queue_depth, d.order_queue_depth);
+      updateUpnl(d.price);
+
+      // Strategy & indicator insights
+      applyStrategyInsights(d);
+
+      // Add to mini chart
+      priceHistory.push({ price: d.price });
+      if (priceHistory.length > 100) priceHistory.shift();
+      updateMiniChart(priceHistory);
+
+      // Latency chart
+      latHistory.push({ eval_ms: d.strategy_eval_ms, latency_ms: d.candle_latency_ms });
+      if (latHistory.length > 80) latHistory.shift();
+      updateLatChart(latHistory);
+
+      // Tick feed
+      addTickRow({ ...d, ts: Date.now() / 1000 });
+    }
+
+    if (msg.type === "signal") {
+      const d = msg.data;
+      document.getElementById("sig-count").textContent = d.signal_count;
+      const log = document.getElementById("signal-log");
+      const item = document.createElement("div");
+      item.className = "log-item " + d.side;
+      item.innerHTML = `
+        <span class="side-icon">${d.side === "BUY" ? "▲" : "▼"}</span>
+        <span class="li-time">${ts2time(d.ts)}</span>
+        <span class="li-price">${fmt(d.price, 2)}</span>
+        <span class="li-reason">${d.reason}</span>
+      `;
+      if (log.querySelector(".empty-state")) log.innerHTML = "";
+      log.prepend(item);
+    }
+
+    if (msg.type === "fill") {
+      const d = msg.data;
+      applyPnl(d);
+      document.getElementById("trade-count").textContent = d.trade_count;
+      const log = document.getElementById("fill-log");
+      const rp = d.realized_pnl;
+      const pnlClass = rp > 0 ? "pos" : rp < 0 ? "neg" : "neu";
+      const pnlStr = rp !== 0 ? (rp > 0 ? "+" : "") + fmt(rp, 4) + " USDT" : "open";
+      const item = document.createElement("div");
+      item.className = "fill-item " + d.side;
+      item.innerHTML = `
+        <span class="side-icon">${d.side === "BUY" ? "▲" : "▼"}</span>
+        <span class="li-time">${ts2time(d.ts)}</span>
+        <span class="li-price">${fmt(d.fill_price, 2)}</span>
+        <span class="li-reason">slip:${fmt(d.slippage, 4)} | ${fmt(d.signal_to_fill_ms, 1)}ms</span>
+        <span class="fill-pnl ${pnlClass}">${pnlStr}</span>
+      </div>
+      `;
+      if (log.querySelector(".empty-state")) log.innerHTML = "";
+      log.prepend(item);
+    }
+
+    if (msg.type === "position") {
+      const d = msg.data;
+      posEntry = d.entry_price || 0;
+      posQty   = d.quantity    || 0;
+      posSide  = d.side        || "FLAT";
+      const badge = document.getElementById("pos-badge");
+      badge.textContent = posSide;
+      badge.className   = "pos-badge " + posSide;
+      document.getElementById("pos-entry").textContent = posSide === "FLAT" ? "—" : fmt(posEntry, 2);
+      document.getElementById("pos-qty").textContent   = posSide === "FLAT" ? "—" : fmt(posQty, 5);
+      updateUpnl(lastPrice);
+    }
+  };
+}
+
+initMiniChart();
+initLatChart();
+connect();
+</script>
+</body>
+</html>

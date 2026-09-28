@@ -1,13 +1,6 @@
 from enum import Enum
 
 
-
-
-
-
-
-
-
 class KlineInterval(Enum):
     M1 = "1m"
     M3 = "3m"
@@ -47,7 +40,6 @@ class KlineInterval(Enum):
         return mapping.get(self.value, 60)
 
 
-
 class CandleColour(Enum):
     GREEN = "GREEN"
     RED = "RED"
@@ -57,3 +49,26 @@ class CandleColour(Enum):
 class Direction(Enum):
     UP = "UP"
     DOWN = "DOWN"
+
+
+class OrderSide(Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+class OrderType(Enum):
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+
+
+class OrderStatus(Enum):
+    PENDING = "PENDING"
+    FILLED = "FILLED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class PositionSide(Enum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    FLAT = "FLAT"

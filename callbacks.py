@@ -1,16 +1,10 @@
-from models import Quote
+"""
+callbacks.py
+
+Kept for optional debug logging only.
+In the new architecture, the StrategyEngine drives the pipeline —
+this module is no longer in the critical path.
+"""
 import logging
 
-from strategy import Strategy
-
-
 logger = logging.getLogger(__name__)
-
-
-strategy = Strategy([12, 50], 14)
-
-
-def on_candle(quote: Quote):
-    logger.info(quote)  #if quote.is_closed else None
-
-    strategy.on_candle(quote)

@@ -1,7 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
-from enums import CandleColour
+from enums import CandleColour, OrderSide, OrderType, OrderStatus, PositionSide
 from utils import seconds_to_hms
+import time
+import uuid
 
 
 @dataclass(frozen=True)
@@ -30,7 +32,90 @@ class Quote:
         return CandleColour.NEUTRAL
 
     def __str__(self):
-        return f"symbol={self.symbol}, date={self.date}, time={seconds_to_hms(self.time)}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume}"
+        return (
+            f"symbol={self.symbol}, "
+            f"date={self.date}, "
+            f"time={seconds_to_hms(self.time)}, "
+            f"O={self.open} H={self.high} L={self.low} C={self.close}, "
+            f"vol={self.volume:.4f}, "
+            f"closed={self.is_closed}"
+        )
+
+
+@dataclass
+class OrderRequest:
+    """
+    Represents a signal from the strategy that should be executed.
+    Created by StrategyEngine, consumed by OrderExecutor.
+    """
+    symbol: str
+    side: OrderSide
+    order_type: OrderType
+    quantity: float
+    price: float                     # market price at signal time
+    limit_price: float | None = None # only for LIMIT orders
+    signal_reason: str = ""          # e.g. "SMA_CROSS_UP + RSI_OVERSOLD"
+    order_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    created_at: float = field(default_factory=time.time)
+
+    def __str__(self):
+        return (
+            f"[{self.order_id}] {self.side.value} {self.order_type.value} "
+            f"{self.quantity} {self.symbol} @ {self.price:.4f} | {self.signal_reason}"
+        )
+
+
+@dataclass
+class Fill:
+    """
+    Represents a confirmed paper/live order fill.
+    Created by OrderExecutor.
+    """
+    order_id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    fill_price: float
+    status: OrderStatus
+    filled_at: float = field(default_factory=time.time)
+    slippage: float = 0.0
+
+    def __str__(self):
+        return (
+            f"[FILL {self.order_id}] {self.side.value} {self.quantity} {self.symbol} "
+            f"@ {self.fill_price:.4f} | slippage={self.slippage:.4f}"
+        )
+
+
+@dataclass
+class Position:
+    """
+    Tracks an open position for one symbol.
+    """
+    symbol: str
+    side: PositionSide
+    entry_price: float
+    quantity: float
+    opened_at: float = field(default_factory=time.time)
+
+    @property
+    def is_open(self) -> bool:
+        return self.side != PositionSide.FLAT
+
+    def unrealized_pnl(self, current_price: float) -> float:
+        if not self.is_open:
+            return 0.0
+        if self.side == PositionSide.LONG:
+            return (current_price - self.entry_price) * self.quantity
+        if self.side == PositionSide.SHORT:
+            return (self.entry_price - current_price) * self.quantity
+        return 0.0
+
+    def __str__(self):
+        return (
+            f"{self.symbol} {self.side.value} "
+            f"qty={self.quantity} entry={self.entry_price:.4f}"
+        )
 
 
 @dataclass

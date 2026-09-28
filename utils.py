@@ -168,3 +168,12 @@ def calc_position_size(
             return 0.0
 
     return quantity
+from collections import deque
+
+def resize_deque(old_deque: deque, new_maxlen: int) -> deque:
+    """
+    Resizes a collections.deque while preserving its existing elements.
+    If the new maxlen is smaller than the current number of elements, 
+    the oldest elements are automatically dropped.
+    """
+    return deque(old_deque, maxlen=new_maxlen)

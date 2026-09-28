@@ -141,24 +141,28 @@ class WebSocketClient:
             self._thread.join(timeout=5)
 
         logger.info(
-            f"WebSocket stopped."
+            "WebSocket stopped."
         )
 
 
 class CandleBuilder:
     """
     Converts individual trades into OHLCV candles.
+
+    Emits Quote objects by putting them onto `candle_queue` (non-blocking).
+    This keeps the WebSocket receive loop free from any downstream latency.
+    The WS thread does ONE thing: recv bytes → parse → put_nowait(quote).
     """
 
     def __init__(
         self,
         symbol: str,
         interval: str,
-        on_candle=None,
+        candle_queue,          # queue.Queue[Quote]
     ):
         self.symbol = symbol
         self.interval = interval
-        self.on_candle = on_candle
+        self.candle_queue = candle_queue
 
         self.interval_seconds = (
             self._interval_to_seconds(interval)
@@ -321,9 +325,14 @@ class CandleBuilder:
             is_closed=closed,
         )
 
-        if self.on_candle:
-            self.on_candle(
-                quote,
+        # Non-blocking — WS thread is NEVER stalled by downstream work.
+        # If queue is full, live tick is dropped (strategy is too slow).
+        try:
+            self.candle_queue.put_nowait(quote)
+        except Exception:
+            logger.warning(
+                "candle_queue full — live tick dropped for %s",
+                self.symbol,
             )
 
 
@@ -331,8 +340,8 @@ class BinanceSpotFeed:
     """
     Binance Spot trade feed.
 
-    Receives individual trades and
-    converts them into candles.
+    Receives individual trades and converts them into candles,
+    then puts them onto the shared candle_queue.
     """
 
     BASE_URL = (
@@ -343,7 +352,7 @@ class BinanceSpotFeed:
         self,
         symbol: str,
         interval: str = "1m",
-        on_candle=None,
+        candle_queue=None,    # queue.Queue[Quote]
     ):
         self.symbol = symbol.upper()
         self.interval = interval
@@ -351,7 +360,7 @@ class BinanceSpotFeed:
         self.candle_builder = CandleBuilder(
             symbol=self.symbol,
             interval=interval,
-            on_candle=on_candle,
+            candle_queue=candle_queue,
         )
 
         # IMPORTANT:
